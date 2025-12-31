@@ -1,0 +1,8 @@
+name = "coco-iro-worker"
+main = "src/index.js"
+compatibility_date = "2025-12-31"
+
+[[d1_databases]]
+binding = "DB" # コード内で使う名前
+database_name = "coco-iro-db" # あなたがD1で作った名前
+database_id = "d551a7b0-9bda-4462-be52-5d48b10f31a5"
