@@ -3,61 +3,63 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
-    // 【1】 個別プロフィールの表示モード (/p/coco-xxxxxx)
+    // 【1】 個別プロフィールの表示モード
     if (path.startsWith("/p/")) {
       const id = path.split("/p/")[1];
       const site = await env.DB.prepare("SELECT * FROM sites WHERE id = ?").bind(id).first();
 
-      if (!site) {
-        return new Response("ページが見つかりません", { status: 404 });
-      }
+      if (!site) return new Response("ページが見つかりません", { status: 404 });
+
+      // 背景色の設定
+      const colors = {
+        sakura: "#fff5f7", sora: "#e0f7fa", mint: "#f0fff4", lemon: "#fffde7", lavender: "#f3e5f5"
+      };
+      const themeColor = colors[site.color] || colors.sakura;
 
       return new Response(`
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${site.name} | ここいろ</title>
     <style>
-        body { background: #fffafb; font-family: sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; color: #5d5d5d; }
-        .card { background: white; padding: 40px 20px; border-radius: 24px; box-shadow: 0 10px 30px rgba(255, 182, 193, 0.2); text-align: center; width: 85%; max-width: 350px; border: 1px solid #ffdae0; animation: fadeIn 0.5s; }
+        body { background: ${themeColor}; font-family: sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; color: #5d5d5d; }
+        .card { background: white; padding: 40px 20px; border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); text-align: center; width: 85%; max-width: 350px; animation: fadeIn 0.5s; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        h1 { color: #ffb6c1; margin-bottom: 10px; font-size: 1.5rem; }
-        p { line-height: 1.6; white-space: pre-wrap; }
-        .back { margin-top: 30px; font-size: 0.8rem; }
-        a { color: #ffb6c1; text-decoration: none; }
+        h1 { color: #5d5d5d; margin-bottom: 10px; font-size: 1.5rem; }
+        .links { margin-top: 20px; display: flex; justify-content: center; gap: 15px; }
+        .links a { text-decoration: none; font-size: 0.8rem; padding: 8px 15px; border-radius: 20px; border: 1px solid #ddd; color: #888; }
+        .back { margin-top: 40px; font-size: 0.7rem; color: #ccc; }
     </style>
 </head>
 <body>
     <div class="card">
         <h1>${site.name}</h1>
         <p>${site.bio}</p>
-        <div class="back"><a href="/">🌸 わたしも「ここいろ」を作る</a></div>
+        <div class="links">
+            ${site.link_x ? `<a href="${site.link_x}" target="_blank">X</a>` : ''}
+            ${site.link_instagram ? `<a href="${site.link_instagram}" target="_blank">Instagram</a>` : ''}
+        </div>
+        <div class="back"><a href="/" style="color:#ccc;">🌸 ここいろで作る</a></div>
     </div>
 </body>
 </html>`, { headers: { "Content-Type": "text/html; charset=utf-8" } });
     }
 
-    // 【2】 フォーム送信 (POST) の処理
+    // 【2】 フォーム送信 (POST)
     if (request.method === "POST") {
       try {
         const formData = await request.formData();
-        const name = formData.get("name") || "ななしさん";
-        const bio = formData.get("bio") || "よろしくお願いします。";
         const id = "coco-" + Math.random().toString(36).slice(-6);
+        const name = formData.get("name") || "ななしさん";
+        const bio = formData.get("bio") || "";
+        const color = formData.get("color") || "sakura";
+        const link_x = formData.get("link_x") || "";
+        const link_instagram = formData.get("link_instagram") || "";
 
-        await env.DB.prepare("INSERT INTO sites (id, name, bio) VALUES (?, ?, ?)").bind(id, name, bio).run();
-
-        if (env.DISCORD_WEBHOOK_URL) {
-          await fetch(env.DISCORD_WEBHOOK_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              content: `🌸 **ここいろ** 新着！\n**${name}** さんのページができました！\n🔗 ${url.origin}/p/${id}`
-            }),
-          });
-        }
+        await env.DB.prepare(
+          "INSERT INTO sites (id, name, bio, color, link_x, link_instagram) VALUES (?, ?, ?, ?, ?, ?)"
+        ).bind(id, name, bio, color, link_x, link_instagram).run();
 
         return new Response(`<html><head><meta http-equiv="refresh" content="0;URL='/p/${id}'"></head></html>`, { headers: { "Content-Type": "text/html; charset=utf-8" } });
       } catch (err) {
@@ -65,60 +67,50 @@ export default {
       }
     }
 
-    // 【3】 トップページ (GET) - 最近の10件リスト付き
+    // 【3】 トップページ
     const { results } = await env.DB.prepare("SELECT * FROM sites ORDER BY created_at DESC LIMIT 10").all();
 
-    const html = `
+    return new Response(`
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>COCO-IRO</title>
     <style>
         body { background: #fffafb; font-family: sans-serif; color: #5d5d5d; display: flex; flex-direction: column; align-items: center; padding: 20px; }
         .container { width: 100%; max-width: 400px; }
-        .header { text-align: center; margin: 20px 0; }
-        h1 { color: #ffb6c1; letter-spacing: 2px; }
-        .card { background: white; padding: 25px; border-radius: 24px; box-shadow: 0 10px 30px rgba(255, 182, 193, 0.2); margin-bottom: 30px; border: 1px solid #ffdae0; }
-        input, textarea { width: 100%; padding: 12px; border: 2px solid #f9f9f9; border-radius: 12px; box-sizing: border-box; margin: 10px 0; background: #f9f9f9; }
-        .btn { background: #ffb6c1; color: white; border: none; padding: 15px; border-radius: 50px; width: 100%; font-weight: bold; cursor: pointer; }
-        .recent-list { width: 100%; }
-        .recent-item { background: rgba(255,255,255,0.7); padding: 12px; border-radius: 12px; margin-bottom: 10px; border: 1px dashed #ffdae0; font-size: 0.85rem; display: block; text-decoration: none; color: inherit; }
-        .recent-item b { color: #ffb6c1; }
+        .card { background: white; padding: 25px; border-radius: 24px; box-shadow: 0 10px 30px rgba(255, 182, 193, 0.2); border: 1px solid #ffdae0; }
+        input, textarea, select { width: 100%; padding: 12px; border: 2px solid #f9f9f9; border-radius: 12px; box-sizing: border-box; margin: 8px 0; background: #f9f9f9; }
+        .btn { background: #ffb6c1; color: white; border: none; padding: 15px; border-radius: 50px; width: 100%; font-weight: bold; margin-top: 10px; }
+        .info { text-align: center; margin: 20px 0; font-size: 0.8rem; color: #aaa; line-height: 1.6; }
+        .recent-item { background: white; padding: 12px; border-radius: 12px; margin-bottom: 8px; display: block; text-decoration: none; color: #888; font-size: 0.8rem; border: 1px solid #eee; }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="header"><h1>COCO-IRO</h1><p>わたしをいろどる、インスタントサイト</p></div>
         <div class="card">
+            <h2 style="text-align:center; color:#ffb6c1;">COCO-IRO</h2>
             <form method="POST">
-                <input type="text" name="name" placeholder="おなまえ" required maxlength="20">
-                <textarea name="bio" placeholder="ひとこと" maxlength="100"></textarea>
-                <button type="submit" class="btn">この色でつくる</button>
+                <input type="text" name="name" placeholder="おなまえ" required>
+                <textarea name="bio" placeholder="ひとこと"></textarea>
+                <select name="color">
+                    <option value="sakura">Sakura (ピンク)</option>
+                    <option value="sora">Sora (ブルー)</option>
+                    <option value="mint">Mint (グリーン)</option>
+                    <option value="lemon">Lemon (イエロー)</option>
+                    <option value="lavender">Lavender (パープル)</option>
+                </select>
+                <input type="url" name="link_x" placeholder="X URL (任意)">
+                <input type="url" name="link_instagram" placeholder="Instagram URL (任意)">
+                <button type="submit" class="btn">ふわりと作る</button>
             </form>
         </div>
-<div style="text-align: center; margin: 20px 0; font-size: 0.85rem; line-height: 1.6;">
-    <p style="color: #ffb6c1; font-weight: bold; margin-bottom: 5px;">
-        ✨ ゲストページは2週間でふわりと消えます
-    </p>
-    <p style="color: #aaa; font-size: 0.75rem; margin: 0;">
-        今のきもちを、気軽にいろどって。<br>
-        ずっと残したいときは、もうすぐ登場する「星の認証」を待っててね。
-    </p>
-</div>
-        <div class="recent-list">
-            <p style="font-size: 0.8rem; color: #aaa; text-align: center;">最近できたページ</p>
-            ${results.map(site => `
-                <a href="/p/${site.id}" class="recent-item">
-                    <b>${site.name}</b>: ${site.bio.substring(0, 20)}${site.bio.length > 20 ? '...' : ''}
-                </a>
-            `).join('')}
+        <div class="info">
+            <p>✨ ゲストページは2週間でふわりと消えます<br>ずっと残したい場所には、もうすぐ「星」を灯せるよ</p>
         </div>
+        <div style="width:100%">${results.map(s => `<a href="/p/${s.id}" class="recent-item"><b>${s.name}</b>: ${s.bio.slice(0,15)}...</a>`).join('')}</div>
     </div>
 </body>
-</html>`;
-
-    return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+</html>`, { headers: { "Content-Type": "text/html; charset=utf-8" } });
   },
 };
