@@ -98,6 +98,15 @@ export default {
                 <button type="submit" class="btn">この色でつくる</button>
             </form>
         </div>
+<div style="text-align: center; margin: 20px 0; font-size: 0.85rem; line-height: 1.6;">
+    <p style="color: #ffb6c1; font-weight: bold; margin-bottom: 5px;">
+        ✨ ゲストページは2週間でふわりと消えます
+    </p>
+    <p style="color: #aaa; font-size: 0.75rem; margin: 0;">
+        今のきもちを、気軽にいろどって。<br>
+        ずっと残したいときは、もうすぐ登場する「星の認証」を待っててね。
+    </p>
+</div>
         <div class="recent-list">
             <p style="font-size: 0.8rem; color: #aaa; text-align: center;">最近できたページ</p>
             ${results.map(site => `
