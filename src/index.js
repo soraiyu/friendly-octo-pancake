@@ -31,29 +31,39 @@ app.get('/api/site/:id', async (c) => {
 
   return c.json({ ...site, links })
 })
-
-// --- [API 2] サイトの新規作成・更新 ---
+// --- [API 2] サイトの新規作成・更新 (修正版) ---
 app.post('/api/site', async (c) => {
-  const body = await c.req.json()
-  const { id, name, bio, color, links, webhook_url } = body
+  try {
+    const body = await c.req.json()
+    const { id, name, bio, color, links, webhook_url } = body
 
-  // トランザクション的に処理（まずsite、次にlinks）
-  // ※実際はD1のbatchを使うのが「しっかり」した作りです
-  const siteId = id || `coco-${crypto.randomUUID().split('-')[0]}`
+    // 1. IDの確定（送られてきたら更新、なければ新規生成）
+    const siteId = id || `coco-${crypto.randomUUID().split('-')[0]}`
 
-  await c.env.DB.prepare(`
-    INSERT OR REPLACE INTO sites (id, name, bio, color, webhook_url)
-    VALUES (?, ?, ?, ?, ?)
-  `).bind(siteId, name, bio, color, webhook_url).run()
+    // 2. sitesテーブルへの保存 (await を確実に)
+    await c.env.DB.prepare(`
+      INSERT OR REPLACE INTO sites (id, name, bio, color, webhook_url, created_at)
+      VALUES (?, ?, ?, ?, ?, COALESCE((SELECT created_at FROM sites WHERE id = ?), CURRENT_TIMESTAMP))
+    `).bind(siteId, name, bio, color, webhook_url, siteId).run()
 
-  // linksはいったん消して再登録（更新を簡単にするため）
-  await c.env.DB.prepare('DELETE FROM links WHERE site_id = ?').bind(siteId).run()
-  for (const link of links) {
-    await c.env.DB.prepare('INSERT INTO links (site_id, platform, url) VALUES (?, ?, ?)')
-      .bind(siteId, link.platform, link.url).run()
+    // 3. linksテーブルの更新 (いったん削除して再登録)
+    await c.env.DB.prepare('DELETE FROM links WHERE site_id = ?').bind(siteId).run()
+    
+    if (links && links.length > 0) {
+      // 複数のリンクをまとめて保存（batchを使うとより「しっかり」します）
+      const statements = links.map(link => 
+        c.env.DB.prepare('INSERT INTO links (site_id, platform, url) VALUES (?, ?, ?)')
+          .bind(siteId, link.platform, link.url)
+      )
+      await c.env.DB.batch(statements)
+    }
+
+    return c.json({ success: true, id: siteId })
+
+  } catch (err) {
+    console.error('Save Error:', err)
+    return c.json({ error: 'Internal Server Error', message: err.message }, 500)
   }
-
-  return c.json({ success: true, id: siteId })
 })
 
 // --- [API 3] いいね & Discord通知 ---
