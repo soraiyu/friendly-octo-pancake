@@ -66,24 +66,33 @@ app.post('/api/site', async (c) => {
   }
 })
 
-// --- [API 3] いいね & Discord通知 ---
+// --- [API 3] いいね & Discord通知 (強化版) ---
 app.post('/api/site/:id/like', async (c) => {
   const id = c.req.param('id')
 
   // 1. いいね数を増やす
   await c.env.DB.prepare('UPDATE sites SET likes = likes + 1 WHERE id = ?').bind(id).run()
 
-  // 2. Webhookを取得してDiscordへ飛ばす
+  // 2. データを取得
   const site = await c.env.DB.prepare('SELECT name, webhook_url FROM sites WHERE id = ?').bind(id).first()
   
-  if (site?.webhook_url) {
-    await fetch(site.webhook_url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        content: `🌸 **${site.name}** さんに「いいね」が届きました！`
+  // 3. Webhook送信
+  if (site?.webhook_url && site.webhook_url.startsWith('https://discord.com')) {
+    try {
+      const response = await fetch(site.webhook_url, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'User-Agent': 'Cloudflare-Worker-Coco-Iro' // おまじない
+        },
+        body: JSON.stringify({
+          content: `🌸 **${site.name}** さんに「いいね」が届きました！`
+        })
       })
-    })
+      console.log('Discord Status:', response.status) // コンソールで結果を確認できる
+    } catch (e) {
+      console.error('Webhook Fetch Error:', e)
+    }
   }
 
   return c.json({ success: true })
