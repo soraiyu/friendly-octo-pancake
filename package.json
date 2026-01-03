@@ -1,0 +1,10 @@
+{
+  "name": "coco-iro-backend",
+  "version": "0.0.0",
+  "devDependencies": {
+    "wrangler": "4.54.0"
+  },
+  "dependencies": {
+    "hono": "^4.0.0"
+  }
+}
